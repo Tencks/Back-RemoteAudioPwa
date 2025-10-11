@@ -4,10 +4,15 @@ import fs from 'fs';
 import cors from "cors";
 import bodyParser from "body-parser";
 import pkg from "native-sound-mixer";
+import { execFile } from "child_process";
+import path from "path";
 
 const { default: SoundMixer } = pkg;
 const app = express();
 
+const playScript = path.join("S:\\Desarrollos Web\\AngularProjects\\RemoteAudioController\\Back-RemoteAudioPwa\\playpause.ps1");
+const nextScript = path.join("S:\\Desarrollos Web\\AngularProjects\\RemoteAudioController\\Back-RemoteAudioPwa\\next.ps1");
+const prevScript = path.join("S:\\Desarrollos Web\\AngularProjects\\RemoteAudioController\\Back-RemoteAudioPwa\\prev.ps1");
 // Usa los mismos certificados que generaste para Angular
 const options = {
   key: fs.readFileSync('key.pem'),
@@ -103,6 +108,22 @@ app.post("/session/:deviceId/:sessionId/mute", (req, res) => {
   session.mute = !!mute;
   res.json({ success: true, mute: session.mute });
 });
+
+
+
+function runPS(scriptPath, res) {
+  execFile("powershell.exe", ["-ExecutionPolicy", "Bypass", "-File", scriptPath], (err) => {
+    if (err) return res.status(500).json({ status: "error", message: err.message });
+    res.json({ status: "ok", message: "Comando enviado ✅" });
+  });
+}
+
+app.post("/media/playpause", (req, res) => runPS(playScript, res));
+app.post("/media/next", (req, res) => runPS(nextScript, res));
+app.post("/media/prev", (req, res) => runPS(prevScript, res));
+
+
+
 
 /**
  * 🚀 Start server
