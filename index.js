@@ -14,9 +14,9 @@ const __dirname = path.dirname(__filename);
 const { default: SoundMixer } = pkg;
 const app = express();
 
-const playScript = path.join("S:\\Desarrollos Web\\AngularProjects\\RemoteAudioController\\Back-RemoteAudioPwa\\playpause.ps1");
-const nextScript = path.join("S:\\Desarrollos Web\\AngularProjects\\RemoteAudioController\\Back-RemoteAudioPwa\\next.ps1");
-const prevScript = path.join("S:\\Desarrollos Web\\AngularProjects\\RemoteAudioController\\Back-RemoteAudioPwa\\prev.ps1");
+const playScript = path.join(__dirname, "playpause.ps1");
+const nextScript = path.join(__dirname, "next.ps1");
+const prevScript = path.join(__dirname, "prev.ps1");
 // Usa los mismos certificados que generaste para Angular
 const options = {
   key: fs.readFileSync('key.pem'),
@@ -128,7 +128,7 @@ app.post("/media/prev", (req, res) => runPS(prevScript, res));
 
 app.get("/media/current", (req, res) => {
   const scriptPath = path.join(__dirname, "mediacurrent.py");
-  execFile("python.exe", [scriptPath], (err, stdout, stderr) => {
+  execFile("python.exe", [scriptPath],{ encoding: 'utf8' } ,(err, stdout, stderr) => {
     if (err) {
       console.error("Error al ejecutar el script de Python:", stderr);
       return res.status(500).json({ status: "error", message: err.message, details: stderr });

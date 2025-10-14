@@ -1,9 +1,13 @@
 import asyncio
 import json
+import sys
 from winsdk.windows.media.control import (
     GlobalSystemMediaTransportControlsSessionManager as MediaManager,
     GlobalSystemMediaTransportControlsSessionPlaybackStatus
 )
+
+# Configurar la salida estándar para UTF-8
+sys.stdout.reconfigure(encoding='utf-8')
 
 async def get_media_info():
     try:
