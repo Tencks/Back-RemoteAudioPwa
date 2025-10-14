@@ -6,6 +6,10 @@ import bodyParser from "body-parser";
 import pkg from "native-sound-mixer";
 import { execFile } from "child_process";
 import path from "path";
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const { default: SoundMixer } = pkg;
 const app = express();
@@ -122,7 +126,23 @@ app.post("/media/playpause", (req, res) => runPS(playScript, res));
 app.post("/media/next", (req, res) => runPS(nextScript, res));
 app.post("/media/prev", (req, res) => runPS(prevScript, res));
 
-
+app.get("/media/current", (req, res) => {
+  const scriptPath = path.join(__dirname, "mediacurrent.py");
+  execFile("python.exe", [scriptPath], (err, stdout, stderr) => {
+    if (err) {
+      console.error("Error al ejecutar el script de Python:", stderr);
+      return res.status(500).json({ status: "error", message: err.message, details: stderr });
+    }
+    console.log("Raw Python output:", stdout);
+    try {
+      const mediaInfo = JSON.parse(stdout);
+      res.json({ status: "ok", mediaInfo });
+    } catch (parseError) {
+      console.error("Error al parsear la salida de Python:", parseError.message);
+      res.status(500).json({ status: "error", message: "Error al parsear la salida de Python", details: parseError.message });
+    }
+  });
+});
 
 
 /**
