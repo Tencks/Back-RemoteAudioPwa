@@ -1,5 +1,5 @@
 import express from "express";
-// import https from 'https';
+import https from 'https';
 import fs from 'fs';
 import cors from "cors";
 import bodyParser from "body-parser";
@@ -19,11 +19,11 @@ const nextScript = path.join(__dirname, "next.ps1");
 const prevScript = path.join(__dirname, "prev.ps1");
 // Usa los mismos certificados que generaste para Angular
 const options = {
-  key: fs.readFileSync('key.pem'),
-  cert: fs.readFileSync('cert.pem')
+  key: fs.readFileSync('localhost+3-key.pem'),
+  cert: fs.readFileSync('localhost+3.pem')
 };
 
-app.use(cors());
+app.use(cors('**'));
 app.use(bodyParser.json());
 
 /**
@@ -148,17 +148,17 @@ app.get("/media/current", (req, res) => {
 /**
  * 🚀 Start server
  */
-const PORT = 5000;
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🎧 Audio control server running on port ${PORT}`);
-  console.log(`Access it from your LAN at: http://<PC_IP>:${PORT}/devices`);
-
-});
-
 // const PORT = 5000;
-
-// https.createServer(options, app).listen(PORT, () => {
+// app.listen(PORT, "0.0.0.0", () => {
 //   console.log(`🎧 Audio control server running on port ${PORT}`);
 //   console.log(`Access it from your LAN at: http://<PC_IP>:${PORT}/devices`);
+
 // });
+
+const PORT = 5000;
+
+https.createServer(options, app).listen(PORT, () => {
+  console.log(`🎧 Audio control server running on port ${PORT}`);
+  console.log(`Access it from your LAN at: http://<PC_IP>:${PORT}/devices`);
+});
 
