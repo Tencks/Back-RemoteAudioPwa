@@ -17,6 +17,7 @@
     "express": "^5.1.0",
     "loudness": "^0.4.2",
     "native-sound-mixer": "^3.4.6-win",
+    "wake_on_lan": "^1.0.0",
     "ws": "^8.18.3"
   }
 }

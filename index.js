@@ -4,9 +4,10 @@ import fs from 'fs';
 import cors from "cors";
 import bodyParser from "body-parser";
 import pkg from "native-sound-mixer";
-import { execFile } from "child_process";
+import { execFile, spawn } from "child_process";
 import path from "path";
 import { fileURLToPath } from 'url';
+import { WebSocketServer } from "ws";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,6 +18,7 @@ const app = express();
 const playScript = path.join(__dirname, "playpause.ps1");
 const nextScript = path.join(__dirname, "next.ps1");
 const prevScript = path.join(__dirname, "prev.ps1");
+const mediaCurrentScript = path.join(__dirname, "mediacurrent.py");
 // Usa los mismos certificados que generaste para Angular
 const options = {
   key: fs.readFileSync('localhost+3-key.pem'),
@@ -157,8 +159,51 @@ app.get("/media/current", (req, res) => {
 
 const PORT = 5000;
 
-https.createServer(options, app).listen(PORT, () => {
+const server = https.createServer(options, app).listen(PORT, () => {
   console.log(`🎧 Audio control server running on port ${PORT}`);
   console.log(`Access it from your LAN at: http://<PC_IP>:${PORT}/devices`);
 });
 
+//WEBSOCKET
+const wss = new WebSocketServer({ server });
+
+wss.on('connection', ws => {
+  console.log('Cliente WebSocket conectado');
+
+  ws.on('close', () => {
+    console.log('Cliente WebSocket desconectado');
+  });
+
+  ws.on('error', error => {
+    console.error('Error en WebSocket:', error);
+  });
+});
+
+
+// Iniciar el script de Python como un proceso hijo de larga duración
+const pythonProcess = spawn('python.exe', [mediaCurrentScript], { encoding: 'utf8' });
+
+pythonProcess.stdout.on('data', (data) => {
+  const message = data.toString().trim();
+  if (message) {
+    console.log('Datos de Python:', message);
+    // Transmitir a todos los clientes conectados
+    wss.clients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    });
+  }
+});
+
+pythonProcess.stderr.on('data', (data) => {
+  console.error(`Error de Python: ${data}`);
+});
+
+pythonProcess.on('close', (code) => {
+  console.log(`Proceso Python mediacurrent.py cerrado con código ${code}`);
+});
+
+pythonProcess.on('error', (err) => {
+  console.error('Error al iniciar el proceso Python:', err);
+});

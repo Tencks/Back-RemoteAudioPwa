@@ -70,5 +70,11 @@ async def get_media_info():
         }
 
 if __name__ == "__main__":
-    result = asyncio.run(get_media_info())
-    print(json.dumps(result, ensure_ascii=False))
+    last_media_info = None
+    while True:
+        current_media_info = asyncio.run(get_media_info())
+        if current_media_info != last_media_info:
+            print(json.dumps(current_media_info, ensure_ascii=False))
+            sys.stdout.flush() # Asegura que la salida se envíe inmediatamente
+            last_media_info = current_media_info
+        asyncio.run(asyncio.sleep(1)) # Espera 1 segundo antes de volver a comprobar
