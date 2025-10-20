@@ -8,6 +8,7 @@ import { execFile, spawn } from "child_process";
 import path from "path";
 import { fileURLToPath } from 'url';
 import { WebSocketServer } from "ws";
+import mqtt from 'mqtt'; // Importar la librería MQTT
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,7 +19,7 @@ const app = express();
 const playScript = path.join(__dirname, "playpause.ps1");
 const nextScript = path.join(__dirname, "next.ps1");
 const prevScript = path.join(__dirname, "prev.ps1");
-const mediaCurrentScript = path.join(__dirname, "mediacurrent.py");
+const mediaCurrentScript = path.join(__dirname, "mediacurrent.py"); // Ya no es necesario
 // Usa los mismos certificados que generaste para Angular
 const options = {
   key: fs.readFileSync('localhost+3-key.pem'),
@@ -128,23 +129,24 @@ app.post("/media/playpause", (req, res) => runPS(playScript, res));
 app.post("/media/next", (req, res) => runPS(nextScript, res));
 app.post("/media/prev", (req, res) => runPS(prevScript, res));
 
-app.get("/media/current", (req, res) => {
-  const scriptPath = path.join(__dirname, "mediacurrent.py");
-  execFile("python.exe", [scriptPath],{ encoding: 'utf8' } ,(err, stdout, stderr) => {
-    if (err) {
-      console.error("Error al ejecutar el script de Python:", stderr);
-      return res.status(500).json({ status: "error", message: err.message, details: stderr });
-    }
-    console.log("Raw Python output:", stdout);
-    try {
-      const mediaInfo = JSON.parse(stdout);
-      res.json({ status: "ok", mediaInfo });
-    } catch (parseError) {
-      console.error("Error al parsear la salida de Python:", parseError.message);
-      res.status(500).json({ status: "error", message: "Error al parsear la salida de Python", details: parseError.message });
-    }
-  });
-});
+// Eliminamos el endpoint /media/current ya que la información vendrá por MQTT
+// app.get("/media/current", (req, res) => {
+//   const scriptPath = path.join(__dirname, "mediacurrent.py");
+//   execFile("python.exe", [scriptPath],{ encoding: 'utf8' } ,(err, stdout, stderr) => {
+//     if (err) {
+//       console.error("Error al ejecutar el script de Python:", stderr);
+//       return res.status(500).json({ status: "error", message: err.message, details: stderr });
+//     }
+//     console.log("Raw Python output:", stdout);
+//     try {
+//       const mediaInfo = JSON.parse(stdout);
+//       res.json({ status: "ok", mediaInfo });
+//     } catch (parseError) {
+//       console.error("Error al parsear la salida de Python:", parseError.message);
+//       res.status(500).json({ status: "error", message: "Error al parsear la salida de Python", details: parseError.message });
+//     }
+//   });
+// });
 
 
 /**
@@ -179,25 +181,50 @@ wss.on('connection', ws => {
   });
 });
 
+// Configuración y conexión MQTT
+const MQTT_BROKER_URL = 'mqtt://localhost:1883';
+const MQTT_TOPIC = 'media/info';
+
+const mqttClient = mqtt.connect(MQTT_BROKER_URL);
+
+mqttClient.on('connect', () => {
+  console.log('Conectado al broker MQTT');
+  mqttClient.subscribe(MQTT_TOPIC, (err) => {
+    if (!err) {
+      console.log(`Suscrito al tema MQTT: ${MQTT_TOPIC}`);
+    } else {
+      console.error('Error al suscribirse al tema MQTT:', err);
+    }
+  });
+});
+
+mqttClient.on('message', (topic, message) => {
+  // message es un Buffer, convertir a string
+  const mediaInfo = message.toString();
+  console.log(`Mensaje MQTT recibido en ${topic}: ${mediaInfo}`);
+
+  // Reenviar a todos los clientes WebSocket conectados
+  wss.clients.forEach(client => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(mediaInfo);
+    }
+  });
+});
+
+mqttClient.on('error', (err) => {
+  console.error('Error en el cliente MQTT:', err);
+});
 
 // Iniciar el script de Python como un proceso hijo de larga duración
 const pythonProcess = spawn('python.exe', [mediaCurrentScript], { encoding: 'utf8' });
 
+// Solo para depuración, ya que la comunicación principal es por MQTT
 pythonProcess.stdout.on('data', (data) => {
-  const message = data.toString().trim();
-  if (message) {
-    console.log('Datos de Python:', message);
-    // Transmitir a todos los clientes conectados
-    wss.clients.forEach(client => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(message);
-      }
-    });
-  }
+  console.log(`Info de Python (stdout): ${data.toString().trim()}`);
 });
 
 pythonProcess.stderr.on('data', (data) => {
-  console.error(`Error de Python: ${data}`);
+  console.error(`Info de Python (stderr): ${data.toString().trim()}`);
 });
 
 pythonProcess.on('close', (code) => {
@@ -205,5 +232,5 @@ pythonProcess.on('close', (code) => {
 });
 
 pythonProcess.on('error', (err) => {
-  console.error('Error al iniciar el proceso Python:', err);
+  console.error('Error al iniciar o ejecutar el proceso Python:', err);
 });
