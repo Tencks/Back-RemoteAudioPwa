@@ -3,23 +3,16 @@ import https from 'https';
 import fs from 'fs';
 import cors from "cors";
 import bodyParser from "body-parser";
-import pkg from "native-sound-mixer";
-import { execFile, spawn } from "child_process";
-import path from "path";
 import { fileURLToPath } from 'url';
+import path from "path";
 import { WebSocketServer } from "ws";
 import mqtt from 'mqtt'; // Importar la librería MQTT
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const { default: SoundMixer } = pkg;
 const app = express();
 
-const playScript = path.join(__dirname, "playpause.ps1");
-const nextScript = path.join(__dirname, "next.ps1");
-const prevScript = path.join(__dirname, "prev.ps1");
-const mediaCurrentScript = path.join(__dirname, "mediacurrent.py"); // Ya no es necesario
 // Usa los mismos certificados que generaste para Angular
 const options = {
   key: fs.readFileSync('localhost+3-key.pem'),
@@ -29,169 +22,73 @@ const options = {
 app.use(cors('**'));
 app.use(bodyParser.json());
 
-/**
- * 🖥️ GET /devices
- * Devuelve todos los dispositivos y sesiones activas
- */
-app.get("/devices", (req, res) => {
-  const devices = SoundMixer.devices.map((device, i) => ({
-    id: i,
-    name: device.name,
-    type: device.type,
-    volume: device.volume,
-    mute: device.mute,
-    sessions: device.sessions.map((s, j) => ({
-      id: `${i}-${j}`,
-      name: s.name,
-      volume: s.volume,
-      mute: s.mute,
-    })),
-  }));
-
-  res.json(devices);
-});
-
-/**
- * 🔊 POST /device/:id/volume
- * Cambia el volumen de un dispositivo
- * body: { volume: 0.5 }
- */
-app.post("/device/:id/volume", (req, res) => {
-  const { id } = req.params;
-  const { volume } = req.body;
-  const device = SoundMixer.devices[id];
-
-  if (!device) return res.status(404).json({ error: "Device not found" });
-
-  device.volume = Math.max(0, Math.min(1, volume));
-  res.json({ success: true, newVolume: device.volume });
-});
-
-/**
- * 🔇 POST /device/:id/mute
- * body: { mute: true/false }
- */
-app.post("/device/:id/mute", (req, res) => {
-  const { id } = req.params;
-  const { mute } = req.body;
-  const device = SoundMixer.devices[id];
-
-  if (!device) return res.status(404).json({ error: "Device not found" });
-
-  device.mute = !!mute;
-  res.json({ success: true, mute: device.mute });
-});
-
-/**
- * 🎧 POST /session/:deviceId/:sessionId/volume
- * body: { volume: 0.3 }
- */
-app.post("/session/:deviceId/:sessionId/volume", (req, res) => {
-  const { deviceId, sessionId } = req.params;
-  const { volume } = req.body;
-  const device = SoundMixer.devices[deviceId];
-  if (!device) return res.status(404).json({ error: "Device not found" });
-
-  const session = device.sessions[sessionId];
-  if (!session) return res.status(404).json({ error: "Session not found" });
-
-  session.volume = Math.max(0, Math.min(1, volume));
-  res.json({ success: true, newVolume: session.volume });
-});
-
-/**
- * 🔇 POST /session/:deviceId/:sessionId/mute
- * body: { mute: true/false }
- */
-app.post("/session/:deviceId/:sessionId/mute", (req, res) => {
-  const { deviceId, sessionId } = req.params;
-  const { mute } = req.body;
-  const device = SoundMixer.devices[deviceId];
-  if (!device) return res.status(404).json({ error: "Device not found" });
-
-  const session = device.sessions[sessionId];
-  if (!session) return res.status(404).json({ error: "Session not found" });
-
-  session.mute = !!mute;
-  res.json({ success: true, mute: session.mute });
-});
-
-
-
-function runPS(scriptPath, res) {
-  execFile("powershell.exe", ["-ExecutionPolicy", "Bypass", "-File", scriptPath], (err) => {
-    if (err) return res.status(500).json({ status: "error", message: err.message });
-    res.json({ status: "ok", message: "Comando enviado ✅" });
-  });
-}
-
-app.post("/media/playpause", (req, res) => runPS(playScript, res));
-app.post("/media/next", (req, res) => runPS(nextScript, res));
-app.post("/media/prev", (req, res) => runPS(prevScript, res));
-
-// Eliminamos el endpoint /media/current ya que la información vendrá por MQTT
-// app.get("/media/current", (req, res) => {
-//   const scriptPath = path.join(__dirname, "mediacurrent.py");
-//   execFile("python.exe", [scriptPath],{ encoding: 'utf8' } ,(err, stdout, stderr) => {
-//     if (err) {
-//       console.error("Error al ejecutar el script de Python:", stderr);
-//       return res.status(500).json({ status: "error", message: err.message, details: stderr });
-//     }
-//     console.log("Raw Python output:", stdout);
-//     try {
-//       const mediaInfo = JSON.parse(stdout);
-//       res.json({ status: "ok", mediaInfo });
-//     } catch (parseError) {
-//       console.error("Error al parsear la salida de Python:", parseError.message);
-//       res.status(500).json({ status: "error", message: "Error al parsear la salida de Python", details: parseError.message });
-//     }
-//   });
-// });
-
-
-/**
- * 🚀 Start server
- */
-// const PORT = 5000;
-// app.listen(PORT, "0.0.0.0", () => {
-//   console.log(`🎧 Audio control server running on port ${PORT}`);
-//   console.log(`Access it from your LAN at: http://<PC_IP>:${PORT}/devices`);
-
-// });
-
-const PORT = 5000;
-
-const server = https.createServer(options, app).listen(PORT, () => {
-  console.log(`🎧 Audio control server running on port ${PORT}`);
-  console.log(`Access it from your LAN at: http://<PC_IP>:${PORT}/devices`);
-});
-
-//WEBSOCKET
-const wss = new WebSocketServer({ server });
-
-wss.on('connection', ws => {
-  console.log('Cliente WebSocket conectado');
-
-  ws.on('close', () => {
-    console.log('Cliente WebSocket desconectado');
-  });
-
-  ws.on('error', error => {
-    console.error('Error en WebSocket:', error);
-  });
-});
-
-// Configuración y conexión MQTT
+// --- Configuración y conexión MQTT para el Backend Central ---
 const MQTT_BROKER_URL = 'mqtt://localhost:1883';
-const MQTT_TOPIC = 'media/info';
+const MQTT_TOPIC_STATUS_WILDCARD = 'media/status/#'; // Suscribirse a todos los estados de medios
+const MQTT_TOPIC_COMMANDS_BASE = 'media/commands'; // Tema base para enviar comandos
 
 const mqttClient = mqtt.connect(MQTT_BROKER_URL);
 
+// Mapa para almacenar la última información de medios de cada servidor
+const allMediaInfo = new Map(); // Key: serverId, Value: mediaInfo
+
+// --- API Endpoint para que la PWA envíe comandos a equipos específicos ---
+app.post('/commands/:serverId/:action', (req, res) => {
+  const { serverId, action } = req.params;
+  const { payload } = req.body; // El payload puede contener datos adicionales para el comando
+
+  const commandTopic = `${MQTT_TOPIC_COMMANDS_BASE}/${serverId}`;
+  const message = { action, serverId, ...payload };
+
+  mqttClient.publish(commandTopic, JSON.stringify(message), (err) => {
+    if (err) {
+      console.error(`Error al publicar comando MQTT para ${serverId}:`, err);
+      return res.status(500).json({ success: false, message: 'Error al enviar comando MQTT' });
+    }
+    console.log(`Comando MQTT '${action}' enviado a ${serverId} en el tema ${commandTopic}`);
+    res.json({ success: true, message: `Comando '${action}' enviado a ${serverId}` });
+  });
+});
+
+// --- Servidor HTTP y WebSocket ---
+const PORT = 5000;
+
+const server = https.createServer(options, app).listen(PORT, () => {
+  console.log(`🎧 Central Backend Server running on port ${PORT}`);
+});
+
+const wss = new WebSocketServer({ server });
+
+wss.on('connection', ws => {
+  console.log('Cliente WebSocket de PWA conectado');
+  
+      
+  // Enviar toda la información de medios conocida al cliente recién conectado
+  if (allMediaInfo.size > 0) {
+   
+    // const allInfoArray = Array.from(allMediaInfo.values());
+    const allInfoArray = Array.from(allMediaInfo.entries()).map(([serverId, data]) => ({
+      serverId,
+      ...data
+    }));
+    ws.send(JSON.stringify({ type: 'initial_state', data: allInfoArray }));
+  }
+
+  ws.on('close', () => {
+    console.log('Cliente WebSocket de PWA desconectado');
+  });
+
+  ws.on('error', error => {
+    console.error('Error en WebSocket de PWA:', error);
+  });
+});
+
+// --- Manejadores de eventos MQTT ---
 mqttClient.on('connect', () => {
   console.log('Conectado al broker MQTT');
-  mqttClient.subscribe(MQTT_TOPIC, (err) => {
+  mqttClient.subscribe(MQTT_TOPIC_STATUS_WILDCARD, (err) => {
     if (!err) {
-      console.log(`Suscrito al tema MQTT: ${MQTT_TOPIC}`);
+      console.log(`Suscrito al tema MQTT: ${MQTT_TOPIC_STATUS_WILDCARD}`);
     } else {
       console.error('Error al suscribirse al tema MQTT:', err);
     }
@@ -200,37 +97,60 @@ mqttClient.on('connect', () => {
 
 mqttClient.on('message', (topic, message) => {
   // message es un Buffer, convertir a string
-  const mediaInfo = message.toString();
-  console.log(`Mensaje MQTT recibido en ${topic}: ${mediaInfo}`);
+  const payload = message.toString();
+  console.log(`Mensaje MQTT recibido en ${topic}: ${payload}`);
 
-  // Reenviar a todos los clientes WebSocket conectados
-  wss.clients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(mediaInfo);
+  try {
+    // const mediaInfo = JSON.parse(payload);
+    // // Extraer el serverId del tema (ej. media/status/chizuru -> chizuru)
+    // const serverId = topic.split('/').pop();
+    // mediaInfo.serverId = serverId;
+    // if (serverId) {
+    //   allMediaInfo.set(serverId, mediaInfo);
+    const parts = topic.split('/');
+    const serverId = parts[2]; // media/status/SERVER_ID
+    const subTopic = parts[3]; // media/status/SERVER_ID/SUBTOPIC
+
+    if (!allMediaInfo.has(serverId)) {
+      allMediaInfo.set(serverId, { mediaInfo: null, devices: [] });
     }
-  });
+    const serverState = allMediaInfo.get(serverId);
+
+    if (subTopic === 'devices') {
+      serverState.devices = JSON.parse(payload);
+      console.log(`Dispositivos actualizados para ${serverId}:`, serverState.devices);
+    } else { // Asumimos que es mediaInfo si no es un subtema específico
+      serverState.mediaInfo = JSON.parse(payload);
+      console.log(`Estado de medios actualizado para ${serverId}:`, serverState.mediaInfo);
+    }
+
+      
+      // console.log(`Estado actualizado para ${serverId}:`, mediaInfo);
+
+      // Reenviar la actualización a todos los clientes WebSocket conectados
+    //   wss.clients.forEach(client => {
+    //     if (client.readyState === WebSocket.OPEN) {
+    //       const ArrayMediaInfo = Array.from(allMediaInfo.values());
+    //       client.send(JSON.stringify({ type: 'update', serverId, data: ArrayMediaInfo }));
+    //     }
+    //   });
+    // }
+        // Reenviar la actualización a todos los clientes WebSocket conectados
+    wss.clients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        const allInfoArray = Array.from(allMediaInfo.entries()).map(([sId, data]) => ({
+          serverId: sId,
+          ...data
+        }));
+        client.send(JSON.stringify({ type: 'update', serverId, data: allInfoArray }));
+      }
+    });
+
+  } catch (error) {
+    console.error('Error al parsear mensaje MQTT o reenviar a WebSocket:', error);
+  }
 });
 
 mqttClient.on('error', (err) => {
   console.error('Error en el cliente MQTT:', err);
-});
-
-// Iniciar el script de Python como un proceso hijo de larga duración
-const pythonProcess = spawn('python.exe', [mediaCurrentScript], { encoding: 'utf8' });
-
-// Solo para depuración, ya que la comunicación principal es por MQTT
-pythonProcess.stdout.on('data', (data) => {
-  console.log(`Info de Python (stdout): ${data.toString().trim()}`);
-});
-
-pythonProcess.stderr.on('data', (data) => {
-  console.error(`Info de Python (stderr): ${data.toString().trim()}`);
-});
-
-pythonProcess.on('close', (code) => {
-  console.log(`Proceso Python mediacurrent.py cerrado con código ${code}`);
-});
-
-pythonProcess.on('error', (err) => {
-  console.error('Error al iniciar o ejecutar el proceso Python:', err);
 });
